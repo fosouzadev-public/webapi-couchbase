@@ -1,10 +1,10 @@
 using System.Text;
 using Couchbase.Core.Exceptions.KeyValue;
 using Couchbase.KeyValue;
-using Couchbase.KeyValue.RangeScan;
 using Couchbase.Query;
 using Microsoft.AspNetCore.Mvc;
 using WebApi.Models;
+using WebApi.Models.Requests;
 
 namespace WebApi.Controllers;
 
@@ -22,9 +22,15 @@ public class StoreController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<IActionResult> AddAsync([FromBody] Store store)
+    public async Task<IActionResult> AddAsync([FromBody] StoreRequest request)
     {
-        store.CreatedAt = DateTimeOffset.UtcNow;
+        Store store = new()
+        {
+            Name = request.Name,
+            Active = request.Active,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
         string id = $"{Guid.NewGuid()}";
 
         try {
@@ -45,7 +51,43 @@ public class StoreController : ControllerBase
         try {
             IGetResult result = await _collection.GetAsync(id);
 
-            return Ok(result.ContentAs<Store>());
+            return Ok(new { Id = id, Doc = result.ContentAs<Store>() });
+        }
+        catch (DocumentNotFoundException) {
+            return NotFound();
+        }
+    }
+
+    [HttpPut("{id}")]
+    public async Task<IActionResult> EditAsync([FromRoute] string id, [FromBody] StoreRequest request)
+    {
+        try {
+            IGetResult result = await _collection.GetAsync(id);
+            
+            Store store = result.ContentAs<Store>();
+            store.Name = request.Name;
+            store.Active = request.Active;
+
+            _ = await _collection.ReplaceAsync(id, store);
+
+            return Ok(new { Id = id, Doc = result.ContentAs<Store>() });
+        }
+        catch (DocumentNotFoundException) {
+            return NotFound();
+        }
+    }
+
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> DeleteAsync([FromRoute] string id)
+    {
+        try {
+            IExistsResult existsResult = await _collection.ExistsAsync(id);
+            
+            if (existsResult.Exists == false)
+                return NotFound();
+
+            await _collection.RemoveAsync(id);
+            return NoContent();
         }
         catch (DocumentNotFoundException) {
             return NotFound();
@@ -59,82 +101,32 @@ public class StoreController : ControllerBase
 
         try {
             StringBuilder query = new();
-            query.AppendLine($"SELECT * FROM {nameof(Store)} LIMIT {pageSize} OFFSET {pageIndex * pageSize}");
+            query.AppendLine($"select * from {nameof(Store)}");
 
-            IQueryResult<Store> queryResult = await _scope.QueryAsync<Store>(query.ToString());
+            if (string.IsNullOrWhiteSpace(filter) == false)
+                query.AppendLine("where name like '%$filter%'");
 
-            // StringBuilder query = new();
-            // query.AppendLine($"SELECT * FROM `{nameof(Store)}`");
+            query.AppendLine("limit $limit offset $offset");
 
-            // _collection.
+            QueryOptions options = new();
+            options.Parameter("filter", filter);
+            options.Parameter("limit", pageSize);
+            options.Parameter("offset", pageIndex * pageSize);
 
-            // IAsyncEnumerable<IScanResult> results = _collection.ScanAsync(
-            //     new SamplingScan(limit: 100)
-            // );
+            IQueryResult<Store> queryResult = await _scope.QueryAsync<Store>(query.ToString(), options);
 
-            // return Ok(result.ContentAs<Store>());
+            if (queryResult.MetaData.Status != QueryStatus.Success)
+                return StatusCode(500);
+
+            await foreach (var item in queryResult)
+            {
+
+            }
+
             return Ok();
         }
         catch (DocumentNotFoundException) {
             return NotFound();
         }
-        /*
-        using Couchbase;
-using Couchbase.Query;
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-
-class Program
-{
-    static async Task Main(string[] args)
-    {
-        // Conecte-se ao cluster do Couchbase
-        var cluster = await Cluster.ConnectAsync(
-            "couchbase://localhost", // Endereço do cluster
-            "username",              // Nome de usuário
-            "password"               // Senha
-        );
-
-        // Acesse o bucket e o escopo/coleção
-        var bucket = await cluster.BucketAsync("seu-bucket");
-        var collection = bucket.DefaultCollection(); // Ou acesse uma coleção específica
-
-        // Defina o número de documentos por página e a página atual
-        int pageSize = 10;
-        int pageNumber = 1; // Página 1, 2, 3, etc.
-        int offset = (pageNumber - 1) * pageSize;
-
-        // Construa a consulta N1QL com LIMIT e OFFSET
-        var query = $@"
-            SELECT *
-            FROM `seu-bucket`
-            WHERE tipo = 'exemplo'
-            LIMIT $pageSize
-            OFFSET $offset;
-        ";
-
-        // Execute a consulta
-        var result = await cluster.QueryAsync<dynamic>(query, new Couchbase.Query.QueryOptions()
-            .Parameter("pageSize", pageSize)
-            .Parameter("offset", offset)
-        );
-
-        // Processe os resultados
-        var documents = new List<dynamic>();
-        await foreach (var row in result)
-        {
-            documents.Add(row);
-        }
-
-        // Exiba os documentos da página atual
-        Console.WriteLine($"Documentos da página {pageNumber}:");
-        foreach (var doc in documents)
-        {
-            Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(doc));
-        }
-    }
-}
-        */
     }
 }

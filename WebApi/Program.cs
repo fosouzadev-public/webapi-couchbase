@@ -1,9 +1,18 @@
 using Couchbase;
+using Couchbase.Extensions.DependencyInjection;
 using Couchbase.KeyValue;
 
 var builder = WebApplication.CreateBuilder(args);
 
-AddCouchbase(builder.Services, builder.Configuration).GetAwaiter().GetResult();
+builder.Services.AddCouchbase(builder.Configuration.GetSection("Couchbase"));
+builder.Services.AddCouchbaseBucket<INamedBucketProvider>(builder.Configuration["Couchbase:Bucket"]);
+builder.Services.AddSingleton<IScope>(provider =>
+{
+    INamedBucketProvider bucketProvider = provider.GetRequiredService<INamedBucketProvider>();
+    IBucket bucket = bucketProvider.GetBucketAsync().GetAwaiter().GetResult();
+
+    return bucket.DefaultScopeAsync().GetAwaiter().GetResult();
+});
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -19,20 +28,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseAuthorization();
 app.MapControllers();
-app.Run();
 
-async Task AddCouchbase(IServiceCollection services, IConfiguration configuration)
+app.Lifetime.ApplicationStopped.Register(async () =>
 {
-    ClusterOptions clusterOptions = new()
-    {
-        UserName = configuration["Couchbase:Username"],
-        Password = configuration["Couchbase:Password"]
-    };
-    clusterOptions.ApplyProfile("wan-development");
-    
-    ICluster cluster = await Cluster.ConnectAsync(configuration["Couchbase:ConnectionString"], clusterOptions);
-    IBucket bucket = await cluster.BucketAsync(configuration["Couchbase:Bucket"]);
-    IScope scope = await bucket.ScopeAsync(configuration["Couchbase:Scope"]);
+    await app.Services.GetRequiredService<ICouchbaseLifetimeService>().CloseAsync().ConfigureAwait(false);
+});
 
-    services.AddSingleton(scope);
-}
+app.Run();
