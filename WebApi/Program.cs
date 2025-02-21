@@ -1,6 +1,7 @@
 using Couchbase;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.KeyValue;
+using WebApi.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,6 +14,8 @@ builder.Services.AddSingleton<IScope>(provider =>
 
     return bucket.DefaultScopeAsync().GetAwaiter().GetResult();
 });
+
+builder.Services.AddSingleton<IStoreRepository, StoreRepository>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
