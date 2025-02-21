@@ -5,6 +5,7 @@ using Couchbase.Query;
 using Microsoft.AspNetCore.Mvc;
 using WebApi.Models;
 using WebApi.Models.Requests;
+using WebApi.Models.Responses;
 
 namespace WebApi.Controllers;
 
@@ -51,7 +52,7 @@ public class StoreController : ControllerBase
         try {
             IGetResult result = await _collection.GetAsync(id);
 
-            return Ok(new { Id = id, Doc = result.ContentAs<Store>() });
+            return Ok(new StoreResponse { Id = id, Store = result.ContentAs<Store>() });
         }
         catch (DocumentNotFoundException) {
             return NotFound();
@@ -94,6 +95,22 @@ public class StoreController : ControllerBase
         }
     }
 
+    [HttpGet("all")]
+    public async Task<IActionResult> GetAllAsync()
+    {
+        try {
+            IQueryResult<StoreResponse> queryResult = await _scope.QueryAsync<StoreResponse>($"select META().id AS id, * from {nameof(Store)}", new QueryOptions());
+
+            if (queryResult.MetaData.Status != QueryStatus.Success)
+                return StatusCode(500);
+            
+            return Ok(await queryResult.ToListAsync());
+        }
+        catch (DocumentNotFoundException) {
+            return NotFound();
+        }
+    }
+    
     [HttpGet]
     public async Task<IActionResult> GetAsync([FromQuery] int pageIndex = 0, int pageSize = 10, string filter = null)
     {
@@ -101,29 +118,27 @@ public class StoreController : ControllerBase
 
         try {
             StringBuilder query = new();
-            query.AppendLine($"select * from {nameof(Store)}");
+            QueryOptions options = new();
+            
+            query.Append($"select META().id AS id, * from {nameof(Store)} ");
 
             if (string.IsNullOrWhiteSpace(filter) == false)
-                query.AppendLine("where name like '%$filter%'");
+            {
+                query.Append("where name like $filter ");
+                options.Parameter("filter", $"%{filter}%");
+            }
 
-            query.AppendLine("limit $limit offset $offset");
-
-            QueryOptions options = new();
-            options.Parameter("filter", filter);
+            query.Append("limit $limit offset $offset ");
+            
             options.Parameter("limit", pageSize);
             options.Parameter("offset", pageIndex * pageSize);
 
-            IQueryResult<Store> queryResult = await _scope.QueryAsync<Store>(query.ToString(), options);
+            IQueryResult<StoreResponse> queryResult = await _scope.QueryAsync<StoreResponse>(query.ToString(), options);
 
             if (queryResult.MetaData.Status != QueryStatus.Success)
                 return StatusCode(500);
-
-            await foreach (var item in queryResult)
-            {
-
-            }
-
-            return Ok();
+            
+            return Ok(await queryResult.ToListAsync());
         }
         catch (DocumentNotFoundException) {
             return NotFound();
