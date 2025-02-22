@@ -22,14 +22,14 @@ public class StoreRepository : IStoreRepository
     public async Task<StoreResponse> AddAsync(Store store)
     {
         string id = $"{Guid.NewGuid()}";
-        _ = await _collection.InsertAsync(id, store, options => { options.Timeout(TimeSpan.FromSeconds(30)); });
+        _ = await _collection.InsertAsync(id, store, options => options.Timeout(TimeSpan.FromSeconds(30)));
         
         return new StoreResponse { Id = id, Store = store };
     }
 
     public async Task<StoreResponse> GetByIdAsync(string id)
     {
-        IGetResult result = await _collection.GetAsync(id);
+        IGetResult result = await _collection.GetAsync(id, options => options.AsReadOnly());
 
         return new StoreResponse { Id = id, Store = result.ContentAs<Store>() };
     }
@@ -51,7 +51,7 @@ public class StoreRepository : IStoreRepository
     public async Task<IEnumerable<StoreResponse>> GetAllAsync()
     {
         IQueryResult<StoreResponse> queryResult = await _scope.QueryAsync<StoreResponse>(
-            $"select META().id AS id, * from {nameof(Store)}", new QueryOptions());
+            $"select META().id AS id, * from {nameof(Store)}");
 
         if (queryResult.MetaData.Status == QueryStatus.Success)
             return await queryResult.ToListAsync();
@@ -63,6 +63,7 @@ public class StoreRepository : IStoreRepository
     {
         StringBuilder query = new();
         QueryOptions options = new();
+        options.AsReadOnly();
             
         query.Append($"select META().id AS id, * from {nameof(Store)} ");
 
