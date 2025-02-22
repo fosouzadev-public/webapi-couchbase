@@ -11,4 +11,8 @@ public interface IStoreRepository
     Task DeleteAsync(string id);
     Task<IEnumerable<StoreResponse>> GetAllAsync();
     Task<IEnumerable<StoreResponse>> GetAsync(int pageIndex, int pageSize, string filter);
+    Task<Product> AddProductAsync(string storeId, Product product);
+    Task<Product> EditProductAsync(string storeId, Product product);
+    Task<IEnumerable<Product>> GetProductsByStoreIdAsync(string storeId);
+    Task DeleteProductById(string storeId, string productId);
 }

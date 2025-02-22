@@ -1,6 +1,8 @@
 using System.Text;
+using Couchbase.Core.Exceptions.KeyValue;
 using Couchbase.KeyValue;
 using Couchbase.Query;
+using Microsoft.OpenApi.Writers;
 using WebApi.Models;
 using WebApi.Models.Responses;
 
@@ -70,6 +72,7 @@ public class StoreRepository : IStoreRepository
             options.Parameter("filter", $"%{filter}%");
         }
 
+        query.Append("order by createdAt desc ");
         query.Append("limit $limit offset $offset ");
             
         options.Parameter("limit", pageSize);
@@ -81,5 +84,49 @@ public class StoreRepository : IStoreRepository
             return await queryResult.ToListAsync();
             
         return [];
+    }
+
+    public async Task<Product> AddProductAsync(string storeId, Product product)
+    {
+        product.Id = $"{Guid.NewGuid()}";
+        
+        await _collection.MutateInAsync(storeId, specs =>
+            specs.ArrayAppend("products", [product]));
+        
+        return product;
+    }
+    
+    public async Task<Product> EditProductAsync(string storeId, Product product)
+    {
+        StoreResponse current = await GetByIdAsync(storeId);
+        int productIndex = current.Store.Products.FindIndex(p => p.Id == product.Id);
+
+        if (productIndex < 0)
+            throw new DocumentNotFoundException();
+        
+        await _collection.MutateInAsync(storeId, specs =>
+            specs.Replace($"products[{productIndex}]", product));
+        
+        return product;
+    }
+
+    public async Task<IEnumerable<Product>> GetProductsByStoreIdAsync(string storeId)
+    {
+        ILookupInResult result = await _collection.LookupInAsync(storeId, specs =>
+            specs.Get("products"));
+
+        return result.ContentAs<List<Product>>(0);
+    }
+
+    public async Task DeleteProductById(string storeId, string productId)
+    {
+        StoreResponse current = await GetByIdAsync(storeId);
+        int productIndex = current.Store.Products.FindIndex(p => p.Id == productId);
+        
+        if (productIndex < 0)
+            throw new DocumentNotFoundException();
+        
+        await _collection.MutateInAsync(storeId, specs =>
+            specs.Remove($"products[{productIndex}]"));
     }
 }

@@ -11,7 +11,7 @@ using WebApi.Repositories;
 namespace WebApi.Controllers;
 
 [ApiController]
-[Route("api/store")]
+[Route("api/stores")]
 public class StoreController(IStoreRepository repository) : ControllerBase
 {
     [HttpPost]
@@ -91,5 +91,77 @@ public class StoreController(IStoreRepository repository) : ControllerBase
     public async Task<IActionResult> GetAsync([FromQuery] int pageIndex = 0, int pageSize = 10, string filter = null)
     {
         return Ok(await repository.GetAsync(pageIndex, pageSize, filter));
+    }
+
+    [HttpPost("{id}/products")]
+    public async Task<IActionResult> AddProductAsync([FromRoute] string id, [FromBody] ProductRequest request)
+    {
+        Product product = new()
+        {
+            Name = request.Name,
+            Price = request.Price
+        };
+
+        try
+        {
+            Product response = await repository.AddProductAsync(id, product);
+
+            return Created($"store/{id}/products/{response.Id}", response);
+        }
+        catch (DocumentNotFoundException)
+        {
+            return NotFound();
+        }
+    }
+
+    [HttpPut("{id}/products/{productId}")]
+    public async Task<IActionResult> EditProductAsync([FromRoute] string id, [FromRoute] string productId, [FromBody] ProductRequest request)
+    {
+        Product product = new()
+        {
+            Id = productId,
+            Name = request.Name,
+            Price = request.Price
+        };
+
+        try
+        {
+            return Ok(await repository.EditProductAsync(id, product));
+        }
+        catch (ArgumentNullException)
+        {
+            return NotFound();
+        }
+        catch (DocumentNotFoundException)
+        {
+            return NotFound();
+        }
+    }
+    
+    [HttpGet("{id}/products")]
+    public async Task<IActionResult> GetProductsByStoreIdAsync([FromRoute] string id)
+    {
+        try
+        {
+            return Ok(await repository.GetProductsByStoreIdAsync(id));
+        }
+        catch (DocumentNotFoundException)
+        {
+            return NotFound();
+        }
+    }
+
+    [HttpDelete("{id}/products/{productId}")]
+    public async Task<IActionResult> DeleteProductAsync([FromRoute] string id, [FromRoute] string productId)
+    {
+        try
+        {
+            await repository.DeleteProductById(id, productId);
+            return NoContent();
+        }
+        catch (DocumentNotFoundException)
+        {
+            return NotFound();
+        }
     }
 }
